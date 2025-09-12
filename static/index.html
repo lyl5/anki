@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Anki Flashcards (Local .apkg Reader)</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Anki Flashcards</h1>
+      <p>Load an .apkg file and study locally in your browser.</p>
+    </header>
+
+    <main>
+      <section class="upload">
+        <input id="fileInput" type="file" accept=".apkg,.colpkg" />
+        <button id="uploadBtn">Upload</button>
+        <span id="status"></span>
+      </section>
+
+      <section id="deckSection" class="hidden">
+        <label for="deckSelect">Choose a deck:</label>
+        <select id="deckSelect"></select>
+        <button id="loadDeckBtn">Load Cards</button>
+      </section>
+
+      <section id="studySection" class="hidden">
+        <div id="card" class="card">
+          <div id="front" class="face"></div>
+          <div id="back" class="face hidden"></div>
+        </div>
+        <div class="controls">
+          <button id="showBtn">Show Answer</button>
+          <button id="prevBtn">Prev</button>
+          <button id="nextBtn">Next</button>
+        </div>
+        <div class="counter"><span id="counter"></span></div>
+      </section>
+    </main>
+
+    <script type="module">
+      const fileInput = document.getElementById('fileInput');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const statusEl = document.getElementById('status');
+      const deckSection = document.getElementById('deckSection');
+      const deckSelect = document.getElementById('deckSelect');
+      const loadDeckBtn = document.getElementById('loadDeckBtn');
+      const studySection = document.getElementById('studySection');
+      const frontEl = document.getElementById('front');
+      const backEl = document.getElementById('back');
+      const showBtn = document.getElementById('showBtn');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const counterEl = document.getElementById('counter');
+
+      let uploadId = null;
+      let cards = [];
+      let index = 0;
+
+      function htmlWithMedia(html) {
+        if (!uploadId) return html || '';
+        let processed = html || '';
+        // Replace [sound:filename] with audio element
+        processed = processed.replace(/\[\s*sound\s*:\s*([^\]]+)\]/gi, (_, fname) => {
+          const safe = encodeURIComponent(fname.trim());
+          return `<audio controls src="/media/${uploadId}/${safe}"></audio>`;
+        });
+        const div = document.createElement('div');
+        div.innerHTML = processed;
+        // Rewrite img/src and audio/src to point to media endpoint
+        div.querySelectorAll('img').forEach(img => {
+          const src = img.getAttribute('src');
+          if (src && !src.startsWith('http')) {
+            img.src = `/media/${uploadId}/${encodeURIComponent(src)}`;
+          }
+        });
+        div.querySelectorAll('audio, source').forEach(a => {
+          const src = a.getAttribute('src');
+          if (src && !src.startsWith('http')) {
+            a.src = `/media/${uploadId}/${encodeURIComponent(src)}`;
+          }
+        });
+        return div.innerHTML;
+      }
+
+      async function uploadApkg(file) {
+        const form = new FormData();
+        form.append('file', file);
+        const res = await fetch('/api/upload', { method: 'POST', body: form });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(err.error || 'Upload failed');
+        }
+        return res.json();
+      }
+
+      function renderCard() {
+        if (!cards.length) {
+          frontEl.innerHTML = '';
+          backEl.innerHTML = '';
+          counterEl.textContent = '0 / 0';
+          return;
+        }
+        const card = cards[index];
+        frontEl.innerHTML = htmlWithMedia(card.front);
+        backEl.innerHTML = htmlWithMedia(card.back);
+        backEl.classList.add('hidden');
+        counterEl.textContent = `${index + 1} / ${cards.length}`;
+      }
+
+      uploadBtn.addEventListener('click', async () => {
+        const file = fileInput.files?.[0];
+        if (!file) {
+          statusEl.textContent = 'Please choose an .apkg file.';
+          return;
+        }
+        statusEl.textContent = 'Uploading...';
+        try {
+          const data = await uploadApkg(file);
+          uploadId = data.uploadId;
+          deckSelect.innerHTML = '';
+          for (const d of data.decks) {
+            const opt = document.createElement('option');
+            opt.value = String(d.id);
+            opt.textContent = `${d.name} (${d.cardCount})`;
+            deckSelect.appendChild(opt);
+          }
+          deckSection.classList.remove('hidden');
+          studySection.classList.add('hidden');
+          statusEl.textContent = 'Upload complete. Choose a deck.';
+        } catch (e) {
+          statusEl.textContent = e.message || String(e);
+        }
+      });
+
+      loadDeckBtn.addEventListener('click', async () => {
+        if (!uploadId) return;
+        const deckId = deckSelect.value;
+        statusEl.textContent = 'Loading cards...';
+        const res = await fetch(`/api/${uploadId}/decks/${deckId}/cards`);
+        const data = await res.json();
+        cards = data;
+        index = 0;
+        studySection.classList.remove('hidden');
+        renderCard();
+        statusEl.textContent = '';
+      });
+
+      showBtn.addEventListener('click', () => {
+        backEl.classList.toggle('hidden');
+      });
+      prevBtn.addEventListener('click', () => {
+        if (!cards.length) return;
+        index = (index - 1 + cards.length) % cards.length;
+        renderCard();
+      });
+      nextBtn.addEventListener('click', () => {
+        if (!cards.length) return;
+        index = (index + 1) % cards.length;
+        renderCard();
+      });
+    </script>
+  </body>
+  </html>
+

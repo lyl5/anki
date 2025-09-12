@@ -1,0 +1,35 @@
+:root {
+  --bg: #0f172a;
+  --elev: #111827;
+  --text: #e5e7eb;
+  --muted: #9ca3af;
+  --accent: #22d3ee;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background: var(--bg); color: var(--text); }
+
+header { padding: 24px; text-align: center; }
+header h1 { margin: 0 0 8px; font-size: 28px; }
+header p { margin: 0; color: var(--muted); }
+
+main { max-width: 900px; margin: 0 auto; padding: 16px; }
+
+.upload { display: flex; gap: 12px; align-items: center; background: var(--elev); padding: 12px; border-radius: 8px; }
+#status { color: var(--accent); }
+
+#deckSection { margin-top: 16px; display: flex; gap: 8px; align-items: center; }
+select, button, input[type="file"] { background: #1f2937; color: var(--text); border: 1px solid #374151; padding: 8px 10px; border-radius: 6px; }
+button { cursor: pointer; }
+button:hover { background: #243042; }
+
+.hidden { display: none; }
+
+.card { margin-top: 20px; background: var(--elev); border-radius: 12px; padding: 20px; min-height: 220px; }
+.face { font-size: 18px; line-height: 1.5; }
+.face img { max-width: 100%; height: auto; }
+
+.controls { display: flex; gap: 8px; margin-top: 12px; }
+.counter { color: var(--muted); margin-top: 4px; }
+
