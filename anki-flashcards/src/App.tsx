@@ -20,6 +20,7 @@ function App() {
   const [parsed, setParsed] = useState<ParsedApkg | null>(null)
   const [index, setIndex] = useState(0)
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
 
   const cards = parsed?.cards ?? []
   const decks = parsed?.decks ?? []
@@ -32,6 +33,88 @@ function App() {
 
   const current = filtered[index]
 
+  type DeckTreeNode = {
+    name: string
+    fullName: string
+    deckId?: number
+    directCount: number
+    totalCount: number
+    children: DeckTreeNode[]
+  }
+
+  const deckTree = useMemo<DeckTreeNode>(() => {
+    const root: DeckTreeNode = { name: '', fullName: '', directCount: 0, totalCount: 0, children: [] }
+    if (!decks.length) return root
+
+    const directCountByDeckName = new Map<string, number>()
+    decks.forEach(d => { directCountByDeckName.set(d.name, 0) })
+    for (const card of cards) {
+      directCountByDeckName.set(card.deckName, (directCountByDeckName.get(card.deckName) ?? 0) + 1)
+    }
+
+    const getOrAddChild = (parent: DeckTreeNode, segment: string, fullName: string): DeckTreeNode => {
+      const found = parent.children.find(c => c.name === segment)
+      if (found) return found
+      const node: DeckTreeNode = {
+        name: segment,
+        fullName,
+        deckId: decks.find(d => d.name === fullName)?.deckId,
+        directCount: 0,
+        totalCount: 0,
+        children: []
+      }
+      parent.children.push(node)
+      return node
+    }
+
+    // Build nodes from deck names
+    for (const d of decks) {
+      const parts = d.name.split('::')
+      let cursor = root
+      let path = ''
+      for (let i = 0; i < parts.length; i++) {
+        path = i === 0 ? parts[i] : path + '::' + parts[i]
+        cursor = getOrAddChild(cursor, parts[i], path)
+      }
+    }
+
+    // Assign direct counts
+    const assignDirectCounts = (node: DeckTreeNode) => {
+      if (node.fullName) {
+        node.directCount = directCountByDeckName.get(node.fullName) ?? 0
+      }
+      node.children.forEach(assignDirectCounts)
+    }
+    assignDirectCounts(root)
+
+    // Compute totals bottom-up
+    const computeTotals = (node: DeckTreeNode): number => {
+      let total = node.directCount
+      for (const child of node.children) total += computeTotals(child)
+      node.totalCount = total
+      return total
+    }
+    computeTotals(root)
+
+    // Sort children alphabetically for stable UI
+    const sortTree = (node: DeckTreeNode) => {
+      node.children.sort((a, b) => a.name.localeCompare(b.name))
+      node.children.forEach(sortTree)
+    }
+    sortTree(root)
+
+    return root
+  }, [decks, cards])
+
+  const toggleExpanded = useCallback((key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
   const onFile = useCallback(async (file: File) => {
     try {
       if (parsed) {
@@ -39,6 +122,7 @@ function App() {
         setParsed(null)
         setIndex(0)
         setSelectedDeck(null)
+        setExpanded(new Set<string>())
       }
       const result = await parseApkgFromFile(file)
       setParsed(result)
@@ -63,23 +147,12 @@ function App() {
       ) : !selectedDeck ? (
         <div style={{ marginTop: 16, maxWidth: 720, marginInline: 'auto' }}>
           <h2>Select a deck</h2>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'grid', gap: 8 }}>
-            {decks
-              .slice()
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map(d => {
-                const prefix = d.name + '::'
-                const count = cards.filter(c => c.deckName === d.name || c.deckName.startsWith(prefix)).length
-                return (
-                  <li key={d.deckId}>
-                    <button onClick={() => { setSelectedDeck(d.name); setIndex(0) }} style={{ width: '100%', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>{d.name}</span>
-                      <span>{count}</span>
-                    </button>
-                  </li>
-                )
-              })}
-          </ul>
+          <DeckTree
+            node={deckTree}
+            expanded={expanded}
+            onToggle={toggleExpanded}
+            onSelect={(fullName) => { setSelectedDeck(fullName); setIndex(0) }}
+          />
         </div>
       ) : current ? (
         <>
@@ -94,6 +167,53 @@ function App() {
       ) : (
         <p style={{ marginTop: 16 }}>No cards in this deck.</p>
       )}
+    </div>
+  )
+}
+
+function DeckTree({ node, expanded, onToggle, onSelect }: {
+  node: { name: string, fullName: string, totalCount: number, children: any[] }
+  expanded: Set<string>
+  onToggle: (key: string) => void
+  onSelect: (fullName: string) => void
+}) {
+  const renderNode = (n: any, depth: number) => {
+    if (!n.fullName && n.children) {
+      // root
+      return (
+        <ul style={{ listStyle: 'none', paddingLeft: 0 }}>
+          {n.children.map((c: any) => renderNode(c, 0))}
+        </ul>
+      )
+    }
+    const hasChildren = n.children && n.children.length > 0
+    const isOpen = expanded.has(n.fullName)
+    return (
+      <li key={n.fullName}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {hasChildren ? (
+            <button onClick={() => onToggle(n.fullName)} aria-label={isOpen ? 'Collapse' : 'Expand'}>
+              {isOpen ? '▾' : '▸'}
+            </button>
+          ) : (
+            <span style={{ width: '1.5em', display: 'inline-block' }} />
+          )}
+          <button onClick={() => onSelect(n.fullName)} style={{ flex: 1, display: 'flex', justifyContent: 'space-between' }}>
+            <span>{n.name}</span>
+            <span>{n.totalCount}</span>
+          </button>
+        </div>
+        {hasChildren && isOpen && (
+          <ul style={{ listStyle: 'none', paddingLeft: 24 }}>
+            {n.children.map((c: any) => renderNode(c, depth + 1))}
+          </ul>
+        )}
+      </li>
+    )
+  }
+  return (
+    <div>
+      {renderNode(node, 0)}
     </div>
   )
 }
