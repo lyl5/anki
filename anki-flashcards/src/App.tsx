@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ChangeEvent } from 'react'
 import './App.css'
 import { parseApkgFromFile, type ParsedApkg, type ParsedCard } from './lib/apkg'
+import { applyAnswer, defaultConfig, getNextDueCardId, loadDeckState, saveDeckState, type DeckState, type Rating } from './lib/scheduler'
 
 function CardView({ card }: { card: ParsedCard }) {
   const [flipped, setFlipped] = useState(false)
@@ -18,9 +19,9 @@ function CardView({ card }: { card: ParsedCard }) {
 
 function App() {
   const [parsed, setParsed] = useState<ParsedApkg | null>(null)
-  const [index, setIndex] = useState(0)
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
+  const [deckState, setDeckState] = useState<DeckState | null>(null)
 
   const cards = parsed?.cards ?? []
   const decks = parsed?.decks ?? []
@@ -31,7 +32,27 @@ function App() {
     return cards.filter(c => c.deckName === selectedDeck || c.deckName.startsWith(prefix))
   }, [cards, selectedDeck])
 
-  const current = filtered[index]
+  // legacy pagination state retained for potential future features; not used in scheduler mode
+
+  const deckCardIds = useMemo(() => new Set(filtered.map(c => c.cardId)), [filtered])
+
+  const currentDueCard = useMemo(() => {
+    if (!selectedDeck || !deckState) return null
+    const id = getNextDueCardId(selectedDeck, deckState, Array.from(deckCardIds))
+    if (id == null) return null
+    return filtered.find(c => c.cardId === id) ?? null
+  }, [selectedDeck, deckState, filtered, deckCardIds])
+
+  const handleAnswer = useCallback((rating: Rating) => {
+    if (!selectedDeck || !deckState) return
+    const now = Date.now()
+    const ids = Object.keys(deckState.cardStates).map(Number)
+    const nextId = getNextDueCardId(selectedDeck, deckState, ids, now)
+    if (nextId == null) return
+    applyAnswer(deckState, nextId, rating, now, defaultConfig)
+    saveDeckState(selectedDeck, deckState)
+    setDeckState({ ...deckState, cardStates: { ...deckState.cardStates }, statsByDay: { ...deckState.statsByDay } })
+  }, [selectedDeck, deckState])
 
   type DeckTreeNode = {
     name: string
@@ -120,13 +141,11 @@ function App() {
       if (parsed) {
         parsed.cleanup()
         setParsed(null)
-        setIndex(0)
         setSelectedDeck(null)
         setExpanded(new Set<string>())
       }
       const result = await parseApkgFromFile(file)
       setParsed(result)
-      setIndex(0)
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to import package.'
       alert(message + '\nIf the deck was exported with a much newer Anki version, please re-export as .apkg/.colpkg (legacy support enabled) and try again.')
@@ -151,21 +170,45 @@ function App() {
             node={deckTree}
             expanded={expanded}
             onToggle={toggleExpanded}
-            onSelect={(fullName) => { setSelectedDeck(fullName); setIndex(0) }}
+            onSelect={(fullName) => {
+              setSelectedDeck(fullName)
+              const ids = filtered.filter(c => c.deckName === fullName || c.deckName.startsWith(fullName + '::')).map(c => c.cardId)
+              const st = loadDeckState(fullName, ids)
+              setDeckState(st)
+            }}
           />
         </div>
-      ) : current ? (
+      ) : currentDueCard ? (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: 720, margin: '16px auto' }}>
-            <button onClick={() => { setSelectedDeck(null); setIndex(0) }}>Back to decks</button>
-            <button onClick={() => setIndex((i) => Math.max(0, i - 1))} disabled={index === 0}>Prev</button>
-            <div>{index + 1} / {filtered.length}</div>
-            <button onClick={() => setIndex((i) => Math.min(filtered.length - 1, i + 1))} disabled={index >= filtered.length - 1}>Next</button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', maxWidth: 720, margin: '16px auto', gap: 12 }}>
+            <button onClick={() => { setSelectedDeck(null) }}>Back to decks</button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <label>Daily target:</label>
+              <input
+                type="number"
+                min={1}
+                value={deckState?.dailyTarget ?? 20}
+                onChange={(e) => {
+                  if (!deckState || !selectedDeck) return
+                  const v = Math.max(1, Number(e.target.value) || 1)
+                  const next = { ...deckState, dailyTarget: v }
+                  setDeckState(next)
+                  saveDeckState(selectedDeck, next)
+                }}
+                style={{ width: 80 }}
+              />
+            </div>
           </div>
-          <CardView card={current} />
+          <CardView key={currentDueCard.cardId} card={currentDueCard} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+            <button onClick={() => handleAnswer('again')}>Again</button>
+            <button onClick={() => handleAnswer('hard')}>Hard</button>
+            <button onClick={() => handleAnswer('good')}>Good</button>
+            <button onClick={() => handleAnswer('easy')}>Easy</button>
+          </div>
         </>
       ) : (
-        <p style={{ marginTop: 16 }}>No cards in this deck.</p>
+        <p style={{ marginTop: 16 }}>All done for today in this deck.</p>
       )}
     </div>
   )
@@ -217,5 +260,8 @@ function DeckTree({ node, expanded, onToggle, onSelect }: {
     </div>
   )
 }
+
+//
+
 
 export default App
