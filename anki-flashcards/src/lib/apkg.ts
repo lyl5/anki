@@ -6,6 +6,7 @@ export type ParsedCard = {
 	cardId: number;
 	noteId: number;
 	deckId: number;
+	deckName: string;
 	frontHtml: string;
 	backHtml: string;
 	mediaMap: Record<string, string>; // filename -> object URL
@@ -53,10 +54,12 @@ function rewriteMediaSrc(html: string, mediaMap: Record<string, string>): string
 export async function parseApkgFromFile(file: File): Promise<ParsedApkg> {
 	const zip = await JSZip.loadAsync(file);
 
-	// Discover sqlite file name
-	const dbEntry = zip.file('collection.anki2') || zip.file('collection.anki21') || zip.file('collection.sqlite');
+	// Discover sqlite file name across modern/legacy formats
+	// Support: collection.anki21b, collection.anki21, collection.anki2, collection.sqlite
+	const dbCandidates = zip.file(/(^|\/)collection\.(?:anki21b|anki21|anki2|sqlite)$/);
+	const dbEntry = dbCandidates[0];
 	if (!dbEntry) {
-		throw new Error('Could not find Anki collection database in package.');
+		throw new Error('Unsupported or unknown package format. Please re-export from the latest Anki as .apkg/.colpkg.');
 	}
 
 	const dbUint8 = new Uint8Array(await dbEntry.async('arraybuffer'));
@@ -116,6 +119,7 @@ export async function parseApkgFromFile(file: File): Promise<ParsedApkg> {
 			cardId: row.id,
 			noteId: row.nid,
 			deckId: row.did,
+			deckName: deckIdToName.get(row.did) ?? String(row.did),
 			frontHtml,
 			backHtml,
 			mediaMap: {},
