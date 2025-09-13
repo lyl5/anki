@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ChangeEvent } from 'react'
 import './App.css'
 import { parseApkgFromFile, type ParsedApkg, type ParsedCard } from './lib/apkg'
 import { applyAnswer, defaultConfig, getNextDueCardId, loadDeckState, saveDeckState, type DeckState, type Rating } from './lib/scheduler'
+import { FsrsScheduler } from './lib/fsrsAdapter'
 
 function CardView({ card }: { card: ParsedCard }) {
   const [flipped, setFlipped] = useState(false)
@@ -22,6 +23,7 @@ function App() {
   const [selectedDeck, setSelectedDeck] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
   const [deckState, setDeckState] = useState<DeckState | null>(null)
+  const [fsrs, setFsrs] = useState<FsrsScheduler | null>(null)
 
   const cards = parsed?.cards ?? []
   const decks = parsed?.decks ?? []
@@ -49,10 +51,15 @@ function App() {
     const ids = Object.keys(deckState.cardStates).map(Number)
     const nextId = getNextDueCardId(selectedDeck, deckState, ids, now)
     if (nextId == null) return
+    // Update our legacy scheduler state for daily targets and due filtering
     applyAnswer(deckState, nextId, rating, now, defaultConfig)
     saveDeckState(selectedDeck, deckState)
     setDeckState({ ...deckState, cardStates: { ...deckState.cardStates }, statsByDay: { ...deckState.statsByDay } })
-  }, [selectedDeck, deckState])
+    // If FSRS is present, also update FSRS state for that card
+    if (fsrs) {
+      fsrs.answer(nextId, rating)
+    }
+  }, [selectedDeck, deckState, fsrs])
 
   type DeckTreeNode = {
     name: string
@@ -175,6 +182,7 @@ function App() {
               const ids = filtered.filter(c => c.deckName === fullName || c.deckName.startsWith(fullName + '::')).map(c => c.cardId)
               const st = loadDeckState(fullName, ids)
               setDeckState(st)
+              setFsrs(new FsrsScheduler())
             }}
           />
         </div>
