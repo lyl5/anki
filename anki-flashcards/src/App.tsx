@@ -42,12 +42,29 @@ function App() {
 
   const deckCardIds = useMemo(() => new Set(filtered.map(c => c.cardId)), [filtered])
 
+  const studiedToday = useMemo(() => {
+    if (!deckState) return 0
+    const now = new Date()
+    const y = now.getFullYear(); const m = String(now.getMonth() + 1).padStart(2, '0'); const d = String(now.getDate()).padStart(2, '0')
+    const key = `${y}-${m}-${d}`
+    return deckState.statsByDay[key]?.studied ?? 0
+  }, [deckState])
+
   const currentDueCard = useMemo(() => {
     if (!selectedDeck || !deckState) return null
+    if (studiedToday >= (deckState.dailyTarget || 20)) return null
+    if (fsrs) {
+      const now = Date.now()
+      const list = filtered.map(c => ({ card: c, due: fsrs.nextDue(c.cardId).getTime() }))
+      if (list.length === 0) return null
+      const dueNow = list.filter(x => x.due <= now)
+      const pool = (dueNow.length ? dueNow : list).sort((a, b) => a.due - b.due)
+      return pool[0]?.card ?? null
+    }
     const id = getNextDueCardId(selectedDeck, deckState, Array.from(deckCardIds))
     if (id == null) return null
     return filtered.find(c => c.cardId === id) ?? null
-  }, [selectedDeck, deckState, filtered, deckCardIds])
+  }, [selectedDeck, deckState, filtered, deckCardIds, fsrs, studiedToday])
 
   const handleAnswer = useCallback((rating: Rating) => {
     if (!selectedDeck || !deckState) return
