@@ -55,10 +55,16 @@ function App() {
     if (studiedToday >= (deckState.dailyTarget || 20)) return null
     if (fsrs) {
       const now = Date.now()
-      const list = filtered.map(c => ({ card: c, due: fsrs.nextDue(c.cardId).getTime() }))
+      const list = filtered.map(c => {
+        const due = fsrs.nextDue(c.cardId)
+        const phase = fsrs.getPhase(c.cardId)
+        // priority: learning(0) < review(1) < new/unknown(2)
+        const priority = phase === 'learning' ? 0 : phase === 'review' ? 1 : 2
+        return { card: c, due: due ? due.getTime() : now, priority }
+      })
       if (list.length === 0) return null
-      const dueNow = list.filter(x => x.due <= now)
-      const pool = (dueNow.length ? dueNow : list).sort((a, b) => a.due - b.due)
+      // prioritize learning first, then earlier due; review before new
+      const pool = list.sort((a, b) => a.priority - b.priority || a.due - b.due)
       return pool[0]?.card ?? null
     }
     const id = getNextDueCardId(selectedDeck, deckState, Array.from(deckCardIds))

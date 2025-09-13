@@ -1,4 +1,4 @@
-import { fsrs, Rating as FsrsRating, type Card, type FSRSParameters, createEmptyCard } from 'ts-fsrs'
+import { fsrs, Rating as FsrsRating, State as FsrsState, type Card, type FSRSParameters, createEmptyCard } from 'ts-fsrs'
 
 export type FsrsCardState = {
 	cid: number
@@ -10,9 +10,8 @@ export class FsrsScheduler {
 	private states = new Map<number, FsrsCardState>()
 
 	constructor(params?: Partial<FSRSParameters>) {
-		if (params) {
-			this.f = fsrs(params)
-		}
+		const base = params ?? { enable_short_term: true }
+		this.f = fsrs(base)
 	}
 
 	ensureCard(cid: number): Card {
@@ -25,9 +24,25 @@ export class FsrsScheduler {
 		return st.card
 	}
 
-	nextDue(cid: number): Date {
-		const c = this.ensureCard(cid)
-		return c.due
+	has(cid: number): boolean {
+		return this.states.has(cid)
+	}
+
+	nextDue(cid: number): Date | null {
+		const st = this.states.get(cid)
+		return st ? st.card.due : null
+	}
+
+	getPhase(cid: number): 'new' | 'learning' | 'review' | null {
+		const st = this.states.get(cid)
+		if (!st) return null
+		switch (st.card.state) {
+			case FsrsState.New: return 'new'
+			case FsrsState.Learning:
+			case FsrsState.Relearning: return 'learning'
+			case FsrsState.Review: return 'review'
+			default: return null
+		}
 	}
 
 	answer(cid: number, rating: 'again' | 'hard' | 'good' | 'easy', now = new Date()): void {
