@@ -52,7 +52,6 @@ function App() {
 
   const currentDueCard = useMemo(() => {
     if (!selectedDeck || !deckState) return null
-    if (studiedToday >= (deckState.dailyTarget || 20)) return null
     if (fsrs) {
       const now = Date.now()
       const list = filtered.map(c => {
@@ -65,6 +64,11 @@ function App() {
       if (list.length === 0) return null
       // prioritize learning first, then earlier due; review before new
       const pool = list.sort((a, b) => a.priority - b.priority || a.due - b.due)
+      // respect daily target for non-learning; always allow learning to reappear
+      if (studiedToday >= (deckState.dailyTarget || 20)) {
+        const nextLearning = pool.find(x => x.priority === 0)
+        return nextLearning ? nextLearning.card : null
+      }
       return pool[0]?.card ?? null
     }
     const id = getNextDueCardId(selectedDeck, deckState, Array.from(deckCardIds))
