@@ -4,16 +4,19 @@ import { parseApkgFromFile, type ParsedApkg, type ParsedCard } from './lib/apkg'
 import { applyAnswer, defaultConfig, getNextDueCardId, loadDeckState, saveDeckState, type DeckState, type Rating } from './lib/scheduler'
 import { FsrsScheduler } from './lib/fsrsAdapter'
 
-function CardView({ card }: { card: ParsedCard }) {
-  const [flipped, setFlipped] = useState(false)
+function CardView({ card, showAnswer }: { card: ParsedCard, showAnswer: boolean }) {
   return (
-    <div style={{ maxWidth: 720, margin: '24px auto', textAlign: 'center' }}>
-      <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 24, minHeight: 160 }}>
-        <div dangerouslySetInnerHTML={{ __html: flipped ? card.backHtml : card.frontHtml }} />
+    <div style={{ maxWidth: 720, margin: '24px auto' }}>
+      <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 24, minHeight: 120 }}>
+        <div style={{ fontWeight: 600, marginBottom: 8 }}>Front</div>
+        <div dangerouslySetInnerHTML={{ __html: card.frontHtml }} />
       </div>
-      <div style={{ marginTop: 16, display: 'flex', gap: 8, justifyContent: 'center' }}>
-        <button onClick={() => setFlipped((f) => !f)}>{flipped ? 'Show Front' : 'Show Back'}</button>
-      </div>
+      {showAnswer && (
+        <div style={{ border: '1px solid #ddd', borderRadius: 8, padding: 24, minHeight: 120, marginTop: 12 }}>
+          <div style={{ fontWeight: 600, marginBottom: 8 }}>Back</div>
+          <div dangerouslySetInnerHTML={{ __html: card.backHtml }} />
+        </div>
+      )}
     </div>
   )
 }
@@ -214,7 +217,7 @@ function App() {
               />
             </div>
           </div>
-          <CardView key={currentDueCard.cardId} card={currentDueCard} />
+          <CardView key={currentDueCard.cardId} card={currentDueCard} showAnswer={showAnswer} />
           {!showAnswer ? (
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
               <button onClick={() => setShowAnswer(true)}>Show Answer</button>
