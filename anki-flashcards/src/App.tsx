@@ -24,6 +24,7 @@ function App() {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set<string>())
   const [deckState, setDeckState] = useState<DeckState | null>(null)
   const [fsrs, setFsrs] = useState<FsrsScheduler | null>(null)
+  const [showAnswer, setShowAnswer] = useState(false)
 
   const cards = parsed?.cards ?? []
   const decks = parsed?.decks ?? []
@@ -60,6 +61,11 @@ function App() {
       fsrs.answer(nextId, rating)
     }
   }, [selectedDeck, deckState, fsrs])
+
+  const rate = useCallback((rating: Rating) => {
+    handleAnswer(rating)
+    setShowAnswer(false)
+  }, [handleAnswer])
 
   type DeckTreeNode = {
     name: string
@@ -183,6 +189,7 @@ function App() {
               const st = loadDeckState(fullName, ids)
               setDeckState(st)
               setFsrs(new FsrsScheduler())
+              setShowAnswer(false)
             }}
           />
         </div>
@@ -208,12 +215,18 @@ function App() {
             </div>
           </div>
           <CardView key={currentDueCard.cardId} card={currentDueCard} />
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
-            <button onClick={() => handleAnswer('again')}>Again</button>
-            <button onClick={() => handleAnswer('hard')}>Hard</button>
-            <button onClick={() => handleAnswer('good')}>Good</button>
-            <button onClick={() => handleAnswer('easy')}>Easy</button>
-          </div>
+          {!showAnswer ? (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+              <button onClick={() => setShowAnswer(true)}>Show Answer</button>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 12 }}>
+              <button onClick={() => rate('again')}>Again</button>
+              <button onClick={() => rate('hard')}>Hard</button>
+              <button onClick={() => rate('good')}>Good</button>
+              <button onClick={() => rate('easy')}>Easy</button>
+            </div>
+          )}
         </>
       ) : (
         <p style={{ marginTop: 16 }}>All done for today in this deck.</p>
@@ -268,6 +281,7 @@ function DeckTree({ node, expanded, onToggle, onSelect }: {
     </div>
   )
 }
+
 
 //
 

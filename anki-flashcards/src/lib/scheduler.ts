@@ -85,18 +85,25 @@ export function getNextDueCardId(_deckFullName: string, state: DeckState, deckCa
 	const studiedToday = state.statsByDay[tKey]?.studied ?? 0
 	if (studiedToday >= state.dailyTarget) return null
 
-	const learning: number[] = []
+	const learningDue: number[] = []
+	const learningFuture: Array<{ id: number; dueAt: number }> = []
 	const review: number[] = []
 	const fresh: number[] = []
 	for (const id of deckCardIds) {
 		const cs = state.cardStates[id]
 		if (!cs) continue
-		if (cs.status === 'learning' && cs.dueAt <= now) learning.push(id)
-		else if (cs.status === 'review' && cs.dueAt <= now) review.push(id)
+		if (cs.status === 'learning') {
+			if (cs.dueAt <= now) learningDue.push(id)
+			else learningFuture.push({ id, dueAt: cs.dueAt })
+		} else if (cs.status === 'review' && cs.dueAt <= now) review.push(id)
 		else if (cs.status === 'new') fresh.push(id)
 	}
-	if (learning.length) return pickStable(learning)
+	if (learningDue.length) return pickStable(learningDue)
 	if (review.length) return pickStable(review)
+	if (learningFuture.length) {
+		learningFuture.sort((a, b) => a.dueAt - b.dueAt)
+		return learningFuture[0].id
+	}
 	if (fresh.length) return pickStable(fresh)
 	return null
 }
